@@ -10,14 +10,15 @@ class Rating:
         # Hilfsfunktion instance
         self.inst_helpfct = ef_functions.Hilfsfunktionen_yt()
 
-    def youtube_video_manual(self, yt_handle, yt_video_id, yt_rating="like", thread_name=None):
+    def youtube_video_manual(self, yt_handle, yt_video_id, proxy_info, stretch_factor=1, watch_video_settings=1,
+                             yt_rating="like", thread_name=None):
 
         # Since this function is primitive and is always in a loop of other functions,
         # we have to delay the response time to simulate a human. So call a
         # time_function here from ef_functions. Don't do this in other auto functions,
         # since you will get 2 delays.
 
-        if self.inst_helpfct.time_function():
+        if self.inst_helpfct.time_function(stretch_factor):
 
             yt_statistics = self.inst_helpfct.video_statistics_by_video_id(yt_handle, yt_video_id)
             # ViewCount should be at least 5 times higher than likeCount to prevent detection
@@ -33,7 +34,20 @@ class Rating:
             else:
                 thread_name += ': '
 
-            if ratio > 5:
+            # Get video length
+            video_length = 300
+            #video_length = int(yt_statistics['duration'])
+
+            if watch_video_settings == 2:
+                print(self.inst_helpfct.timestamp() + thread_name + "Rating::youtube_video_manual: Youtube Video watch"
+                                                                    " for id: {0} was forced, try to watch 10"
+                                                                    " Times".format(yt_video_id))
+                # Call function for watching video
+                self.inst_helpfct.watch_video(yt_video_id, proxy_info, video_length)
+
+            rating_ratio = 10
+
+            if ratio > rating_ratio:
                 # get current rating
                 rating_result = yt_handle.videos().getRating(id=yt_video_id).execute()
 
@@ -74,11 +88,20 @@ class Rating:
                           " already exist or not possible")
             else:
                 print(self.inst_helpfct.timestamp() + thread_name + "Rating::youtube_video_manual:"
-                            "Attention, Viewcount devided by LikeCount is less than 5, its {0} for the video {1}."
-                                                                         " Video was not rated".format(ratio, yt_video_id))
+                            "Attention, Viewcount devided by LikeCount is less than"
+                                                                    " {0}, its {1} for the video {2}."
+                                                                    " Video was not rated".format(rating_ratio,
+                                                                                                  ratio, yt_video_id))
+                if watch_video_settings == 1:
+                    print(self.inst_helpfct.timestamp() + thread_name + "Rating::youtube_video_manual:"
+                                                                        "Try to watch 8 times, so the next"
+                                                                        " run will probably work.")
+                    # Call function for watching video
+                    self.inst_helpfct.watch_video(yt_video_id, proxy_info, video_length)
+
         return True
 
-    def youtube_video_auto(self, yt_handle, thread_name=None):
+    def youtube_video_auto(self, yt_handle, proxy_info, stretch_factor=1, watch_video_settings=1, thread_name=None):
 
         # Get a video list from DB
         video_list = self.inst_helpfct.get_video_list_from_sqlite()
@@ -105,12 +128,14 @@ class Rating:
             if rating == 0:
                 rating_string = 'dislike'
 
-            self.youtube_video_manual(yt_handle, video_id, rating_string, thread_name)
+            self.youtube_video_manual(yt_handle, video_id, proxy_info, stretch_factor, watch_video_settings,
+                                      rating_string, thread_name)
             n += 1
 
         return 0
 
-    def youtube_channel_auto(self, yt_handle, video_list_by_channel, channel_list_by_id, thread_name):
+    def youtube_channel_auto(self, yt_handle, video_list_by_channel, channel_list_by_id, stretch_factor,
+                             watch_video_settings, thread_name, proxy_info):
 
         # Create a reason list
         reason = []
@@ -145,5 +170,6 @@ class Rating:
                     rating_list = ['dislike', 'like', 'like', 'none', 'none', 'none', 'none']
                     yt_rating = rating_list[random.randint(0, 6)]
                 # The manual rating function (youtube_video_manual) is calling a delay function, so the loop is slow
-                self.youtube_video_manual(yt_handle, video_id, yt_rating, thread_name)
+                self.youtube_video_manual(yt_handle, video_id, proxy_info, stretch_factor,
+                                          watch_video_settings, yt_rating, thread_name)
             n += 1

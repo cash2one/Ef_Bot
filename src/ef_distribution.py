@@ -8,10 +8,11 @@ import time
 import sys
 import datetime
 from apiclient import errors
-import ipaddress
+import random
 
 
 class Distribution:
+    __daytime_factor = None
 
     def __init__(self):
 
@@ -29,11 +30,9 @@ class Distribution:
 
         # Add watching instance when completed
 
-    daytime_factor = None
-
     def get_accounts_number(self):
 
-        account_dir = './acc'
+        account_dir = './acc/youtube/credentials'
         accounts = os.listdir(account_dir)
         accounts.sort()
 
@@ -53,40 +52,16 @@ class Distribution:
 
         return accounts_number
 
-    def get_proxy_list(self, proxy_type):
-
-        f = None
-
-        if proxy_type == 'http':
-            f = open('proxy_http_ip.txt', mode='r')
-        elif proxy_type == 'socks5':
-            f = open('proxy_socks_auth.txt', mode='r')
+    def get_proxy_list(self):
 
         proxy_array = []
 
-        proxy_file = f.readlines()
-
-        for line in proxy_file:
-            if line != '\n':
-                port_position = -1
-                char = line[port_position]
-                while char is not ':':
-                    port_position -= 1
-                    char = line[port_position]
-                    if port_position == -100:
-                        print('Distribution::get_proxy_list: '
-                              'something wrong in proxy file? To many characters in line?')
-                        break
-                port_number = line[port_position+1:-1]
-                port_ip = line[0:port_position]
-                # Check if IP Address is valid
-                ip = None
-                try:
-                    ip = ipaddress.ip_address(port_ip)
-                except ValueError:
-                    print('Distribution::get_proxy_list: IP ' + str(ip) + 'seems not to be valid')
-                tuple_array = [port_ip, port_number]
-                proxy_array.append(tuple_array)
+        with open('proxy_socks.txt', mode='r') as file:
+            data = file.readlines()
+            for line in data:
+                line = line.strip('\n')
+                line_array = line.split(':')
+                proxy_array.append(line_array)
 
         return proxy_array
 
@@ -97,24 +72,25 @@ class Distribution:
         morning_start = datetime.time(6, 0, 0)
         midday_start = datetime.time(12, 0, 0)
         evening_start = datetime.time(17, 0, 0)
-        night_start = datetime.time(23, 0, 0)
+        night_start = datetime.time(22, 0, 0)
 
         if morning_start <= current_time <= midday_start:
-            self.daytime_factor = 0.4
+            self.__daytime_factor = 0.4
         elif midday_start <= current_time <= evening_start:
-            self.daytime_factor = 0.6
+            self.__daytime_factor = 0.6
         elif evening_start <= current_time <= night_start:
-            self.daytime_factor = 1
+            self.__daytime_factor = 1
         else:
-            self.daytime_factor = 0
+            self.__daytime_factor = 0.2
 
-        return int(threads_number_max*self.daytime_factor)
+        return int(threads_number_max*self.__daytime_factor)
 
 
 class Distribution_yt(Distribution):
 
-    def thread_rating(self, account_nr, proxy_host, proxy_port, proxy_type, auto_video, max_history_sites=1,
-                      one_shot_channel_id=None, one_shot_video_id=None, one_shot_reason=1, thread_name=None):
+    def thread_rating(self, account_nr, proxy_host, proxy_port, proxy_type, auto_video, proxy_user, proxy_pass,
+                      stretch_factor, max_history_sites=1, one_shot_channel_id=None, one_shot_video_id=None,
+                      one_shot_reason=1, watch_video_settings=1, thread_name=None):
 
         if one_shot_video_id is not None and one_shot_channel_id is not None:
             sys.exit(self.inst_helpfct.timestamp() + 'Distribution::thread_rating: At least two one'
@@ -124,11 +100,17 @@ class Distribution_yt(Distribution):
         yt_handle = None
 
         try:
-            yt_handle = self.inst_conn.yt_connection(account_nr, proxy_host, proxy_port, proxy_type)
+            yt_handle = self.inst_conn.yt_connection(account_nr, proxy_host, proxy_port, proxy_type, proxy_user,
+                                                     proxy_pass)
         except errors.HttpError as e:
             print(self.inst_helpfct.timestamp() + 'Distribution::thread_rating: '
                                                   'Something went wrong, yt_handle not created? An HTTP '
                   'error {0} occurred:\n{1}'.format(e.resp.status, e.content))
+
+        if not yt_handle:
+            return False
+
+        proxy_info = [proxy_host, proxy_port, proxy_type, proxy_user, proxy_pass]
 
         # Channel_list_by_id and video_list_by_channel have the same order
         # its needed for Rating.youtube_channel function to verify if to rate up or down
@@ -147,7 +129,8 @@ class Distribution_yt(Distribution):
             else:
                 print(self.inst_helpfct.timestamp() + 'Distribution::thread_rating: '
                                                       'Attention, reason argument is not 1 or 0')
-            self.inst_rating.youtube_video_manual(yt_handle, one_shot_video_id, rating)
+            self.inst_rating.youtube_video_manual(yt_handle, one_shot_video_id, stretch_factor,
+                                                  watch_video_settings, rating, proxy_info)
         # If its not the case, than a channel or auto channel from db is wished
         else:
             # print(channel_list_by_id)
@@ -157,19 +140,22 @@ class Distribution_yt(Distribution):
             # If auto_video is enabled, then call additional youtube_video_auto function
             # its rating the videos from db
             if auto_video:
-                self.inst_rating.youtube_video_auto(yt_handle, thread_name)
+                self.inst_rating.youtube_video_auto(yt_handle, watch_video_settings, stretch_factor, thread_name)
 
             # print(video_list_by_channel)
-            self.inst_rating.youtube_channel_auto(yt_handle, video_list_by_channel, channel_list_by_id, thread_name)
+            self.inst_rating.youtube_channel_auto(yt_handle, video_list_by_channel, channel_list_by_id, stretch_factor,
+                                                  watch_video_settings, thread_name, proxy_info)
 
-        return 0
+        return True
 
-    def thread_subscription(self, account_nr, proxy_host, proxy_port, proxy_type, one_shot_subscription):
+    def thread_subscription(self, account_nr, proxy_host, proxy_port, proxy_type, proxy_user, proxy_pass,
+                            one_shot_subscription):
 
         yt_handle = None
 
         try:
-            yt_handle = self.inst_conn.yt_connection(account_nr, proxy_host, proxy_port, proxy_type)
+            yt_handle = self.inst_conn.yt_connection(account_nr, proxy_host, proxy_port, proxy_type, proxy_user,
+                                                     proxy_pass)
         except errors.HttpError as e:
             print(self.inst_helpfct.timestamp() + 'Distribution::thread_subscription: '
                                                   'Something went wrong, yt_handle not created? An HTTP '
@@ -184,21 +170,58 @@ class Distribution_yt(Distribution):
             print(self.inst_helpfct.timestamp() + "Distribution::thread_subscription: "
                                                   "A subscription to {0} was added.".format(channel_title))
 
-    def run(self, threads_number_max, threads_dynamic, accounts_number_to_use, max_history_sites,
-            auto_video, one_shot_channel_id, one_shot_video_id_or_link, one_shot_reason,
-            one_shot_subscription, proxy_type):
+    def run(self, threads_number_max, stretch_factor, threads_dynamic, accounts_number_to_use,
+            max_history_sites, auto_video, one_shot_channel_id, one_shot_video_id_or_link, one_shot_reason,
+            one_shot_subscription, proxy_type, watch_video_settings):
+
+        # Get proxy list with ports
+        proxy_list = self.get_proxy_list()
 
         # Check and print the mode
-        if one_shot_channel_id is None and one_shot_video_id_or_link is None:
+        if one_shot_subscription is not None:
+            print(self.inst_helpfct.timestamp() + 'Distribution::run: One shot Channel subscription mode was started, '
+                                                  'since since channel id as one_shot_subscription was provided')
+        elif one_shot_channel_id is None and one_shot_video_id_or_link is None:
             print(self.inst_helpfct.timestamp() + 'Distribution::run: auto-channel-mode was started, '
                                                   'since no one-shot channel or video provided')
         elif one_shot_channel_id is None and one_shot_video_id_or_link is not None:
             print(self.inst_helpfct.timestamp() + 'Distribution::run: one shot video mode was started')
         elif one_shot_channel_id is not None and one_shot_video_id_or_link is None:
             print(self.inst_helpfct.timestamp() + 'Distribution::run: one shot channel mode was started')
-        if auto_video:
+        if auto_video and one_shot_subscription is None:
             print(self.inst_helpfct.timestamp() + 'Distribution::run: Additionally auto_video'
                                                   ' (lonely videos from db) was started')
+
+        # First we will fast check if credentials are available
+        broken_account_list = []
+        for account_nr in range(1, accounts_number_to_use + 1):
+            # Get proxy_host and proxy_port
+            proxy_host = proxy_list[account_nr - 1][0]
+            proxy_port = proxy_list[account_nr - 1][1]
+            proxy_user = None
+            proxy_pass = None
+            # Check if proxy file has login - pass format and assign the arguments
+            if len(proxy_list[account_nr - 1]) == 4:
+                proxy_user = proxy_list[account_nr - 1][2]
+                proxy_pass = proxy_list[account_nr - 1][3]
+            elif len(proxy_list[account_nr - 1]) != 4 and len(proxy_list[account_nr - 1]) != 2:
+                raise print(self.inst_helpfct.timestamp() +
+                                'Distribution::run: Attention, Proxy file with wrong format??? Quit application')
+
+            try:
+                valid = self.inst_conn.yt_connection(account_nr, proxy_host, proxy_port, proxy_type,
+                                                     proxy_user, proxy_pass)
+            except:
+                valid = False
+                print(self.inst_helpfct.timestamp() +
+                            'Distribution::run: Attention, Proxy or account nr. {0} is down?'.format(str(account_nr)))
+            if not valid:
+                broken_account_list.append(account_nr)
+            # try:
+            #    self.inst_conn.yt_connection(account_nr, proxy_host, proxy_port, proxy_type, proxy_user, proxy_pass)
+            # except:
+            #    print('FEHLER FEHLER')
+            # time.sleep(10)
 
         one_shot_video_id = None
 
@@ -217,59 +240,81 @@ class Distribution_yt(Distribution):
         if accounts_number_to_use is None:
             accounts_number_to_use = self.get_accounts_number()
 
-        # Get proxy list with ports
-        proxy_list = self.get_proxy_list(proxy_type)
-
         if accounts_number_to_use > len(proxy_list):
             print(self.inst_helpfct.timestamp() + 'Distribution::run: Attention, '
                                                   'Accounts number is higher than Proxy number.'
                   ' Strange behavior or crash is possible when arguments passed to thread_rating function')
 
+        # Calculate the dynamic threads number if necessary
+        if threads_dynamic:
+            threads_number_dynamic = self.dynamic_threads_number(threads_number_max)
+        else:
+            threads_number_dynamic = threads_number_max
+        print(self.inst_helpfct.timestamp() + 'Distribution::run: current max'
+                                              ' possible threads (dynamic): {0}'.format(threads_number_dynamic))
+
         # Now create a handle for each account number and proxy
         # because of the range increase the account number by 1
         for account_nr in range(1, accounts_number_to_use+1):
-            # Get proxy_host and proxy_port
-            proxy_host = proxy_list[account_nr-1][0]
-            proxy_port = proxy_list[account_nr-1][1]
 
-            thread_name = 'Thread_' + str(account_nr)
-            # No one_shot_subscription means rating
-            thread = None
+            if account_nr not in broken_account_list:
+                # Get proxy_host and proxy_port
+                proxy_host = proxy_list[account_nr - 1][0]
+                proxy_port = proxy_list[account_nr - 1][1]
+                proxy_user = None
+                proxy_pass = None
+                # Check if proxy file has login - pass format and assign the arguments
+                if len(proxy_list[account_nr - 1]) == 4:
+                    proxy_user = proxy_list[account_nr - 1][2]
+                    proxy_pass = proxy_list[account_nr - 1][3]
+                elif len(proxy_list[account_nr - 1]) != 4 and len(proxy_list[account_nr - 1]) != 2:
+                    raise print(self.inst_helpfct.timestamp() +
+                                'Distribution::run: Attention, Proxy file with wrong format??? Quit application')
 
-            if one_shot_subscription is None:
-                thread = threading.Thread(target=self.thread_rating, name=thread_name,
-                                          args=(account_nr, proxy_host, proxy_port, proxy_type,
-                                                max_history_sites, auto_video, one_shot_channel_id,
-                                                one_shot_video_id, one_shot_reason, thread_name))
+                thread_name = 'Thread_' + str(account_nr)
+                # No one_shot_subscription means rating
+                thread = None
+                if one_shot_subscription is None:
+                    thread = threading.Thread(target=self.thread_rating, name=thread_name,
+                                              args=(account_nr, proxy_host, proxy_port, proxy_type,
+                                                    auto_video, proxy_user, proxy_pass, stretch_factor,
+                                                    max_history_sites, one_shot_channel_id, one_shot_video_id,
+                                                    one_shot_reason, watch_video_settings, thread_name))
 
-            if one_shot_subscription is not None:
-                thread = threading.Thread(target=self.thread_subscription, name=thread_name,
-                                          args=(account_nr, proxy_host, proxy_port, proxy_type, one_shot_subscription))
+                thread.start()
 
-            thread.start()
-            print(self.inst_helpfct.timestamp() + 'Distribution::run: ' + thread.getName() + ' was started')
-            number_of_threads = len(threading.enumerate())
+                if one_shot_subscription is not None:
+                    # Threats are not needed here, we dont need speed, for 500 subscribirs in one day, we need,
+                    # just every 180 seconds a new subscriber. We dont run subscription and rating together,
+                    # so they are not needed.
+                    time.sleep(random.randint(120, 240))
+                    self.thread_subscription(account_nr, proxy_host, proxy_port, proxy_type,
+                                             proxy_user, proxy_pass, one_shot_subscription)
 
-            # For some reason we have to slow down threads starting, or we will get different ssl errors
-            time.sleep(1)
-
-            # Check how many threads are currently running
-            # Minus 1 is needed, because main thread is counted as well
-
-            if threads_dynamic:
-                threads_number_dynamic = self.dynamic_threads_number(threads_number_max)
-            else:
-                threads_number_dynamic = threads_number_max
-            print(self.inst_helpfct.timestamp() + 'Distribution::run: current max'
-                                                  ' possible threads (dynamic): {0}'.format(threads_number_dynamic))
-
-            while number_of_threads-1 > threads_number_dynamic:
-                sleeping_time = 300
-                print(self.inst_helpfct.timestamp() + 'Distribution::run: Max number of threads is reached.'
-                      ' Wait for {0} seconds for some threads to finish before new assignment. Current'
-                      ' active threads are {1}'.format(sleeping_time, threading.enumerate()))
-                time.sleep(sleeping_time)
+                print(self.inst_helpfct.timestamp() + 'Distribution::run: ' + thread.getName() + ' was started')
                 number_of_threads = len(threading.enumerate())
+
+                # For some reason we have to slow down threads starting, or we will get different ssl errors
+                # Additionally it prevents to open new browser window while the other still logs in
+                # should be at least 30 seconds.
+                time.sleep(random.randrange(35, 60))
+
+                # Check how many threads are currently running
+                # Minus 1 is needed, because main thread is counted as well
+
+                while number_of_threads - 1 > threads_number_dynamic:
+                    sleeping_time = 300
+                    print(self.inst_helpfct.timestamp() + 'Distribution::run: Max number of threads is reached.'
+                                                          ' Wait for {0} seconds for some threads to finish before'
+                                                          ' new assignment. Current'
+                                                          ' active threads are {1}'.format(sleeping_time,
+                                                                                           threading.enumerate()))
+                    time.sleep(sleeping_time)
+                    number_of_threads = len(threading.enumerate())
+            else:
+                print(self.inst_helpfct.timestamp() + 'Distribution::run: Account nr. {0} was initially broken, '
+                                                      'thread for this account skipped'.format(account_nr))
+                pass
 
         # Cant use thread.join because its not reachable since its in a loop
         # Wait till all threads are finished before continue

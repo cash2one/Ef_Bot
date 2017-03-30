@@ -3,9 +3,56 @@ import urllib.parse
 import random
 import time
 import datetime
+from selenium import webdriver
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+from pyexcel_ods import get_data
 
 
 class Hilfsfunktionen:
+
+    def install_firefox_proxy_new(self, proxy_ip, proxy_port):
+
+        firefoxCap = DesiredCapabilities.FIREFOX
+
+        # we need to explicitly specify to use Marionette
+        firefoxCap['marionette'] = True
+
+        fp = webdriver.FirefoxProfile()
+        fp.set_preference("network.proxy.type", 1)
+        fp.set_preference("network.proxy.socks", proxy_ip)
+        fp.set_preference("network.proxy.socks_port", int(proxy_port))
+        fp.set_preference("javascript.enabled", True)
+        fp.set_preference("general.useragent.override",
+                          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+                          " (KHTML, like Gecko) Chrome/57.0.2987.98 Safari/537.36")
+        fp.update_preferences()
+
+        return webdriver.Firefox(firefox_binary="/usr/bin/firefox", firefox_profile=fp, capabilities={"marionette": True})
+
+    def install_firefox_proxy(self, proxy_ip, proxy_port):
+        fp = webdriver.FirefoxProfile()
+        fp.set_preference("network.proxy.type", 1)
+        fp.set_preference("network.proxy.socks", proxy_ip)
+        fp.set_preference("network.proxy.socks_port", int(proxy_port))
+        fp.set_preference("javascript.enabled", True)
+        fp.set_preference("general.useragent.override",
+                          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+                          " (KHTML, like Gecko) Chrome/57.0.2987.98 Safari/537.36")
+        fp.update_preferences()
+        # https://github.com/seleniumhq/selenium/issues/2739
+        # Thats why we have to use capabilities={"marionette": False} for old Firefox Driver
+        # Replace the driver and modify this function
+        return webdriver.Firefox(firefox_profile=fp, capabilities={"marionette": False})
+
+    def install_chrome_proxy(self, proxy_ip, proxy_port):
+        chrome_options = webdriver.ChromeOptions()
+        chrome_options.add_argument("--start-maximized")
+        chrome_options.add_argument('--proxy-server=socks5://' + str(proxy_ip).strip()
+                                    + ':'.strip() + str(proxy_port).strip())
+        chrome_options.add_argument(
+            '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/57.0.2987.98 Safari/537.36')
+        return webdriver.Chrome(chrome_options=chrome_options)
 
     # Return a timestamp for output
     def timestamp(self):
@@ -19,14 +66,20 @@ class Hilfsfunktionen:
             return start_time <= current_time or current_time <= end_time
 
     # Check if its "sleep" time or not, to simulate a human
-    # To improve the results, include timezone check for a certain ip
-    def time_function(self, turned_on=True):
+    # To improve the results, include timezone check for a certain ip?
+    def time_function(self, stretch_factor=1, turned_on=True):
+
+        min_delay = 30
+        max_delay = 300
+        # casting as int not necessary, round returns int, read doc
+        min_delay = round(min_delay*stretch_factor)
+        max_delay = round(max_delay*stretch_factor)
 
         if turned_on:
             current_time = datetime.datetime.now().time()
             # Randomize a bit, so the threads don't 'collapse' all at the same time
-            start_time = datetime.time(random.randint(6, 8), 0, 0)
-            end_time = datetime.time(random.randint(21, 23), 0, 0)
+            start_time = datetime.time(random.randint(4, 6), 0, 0)
+            end_time = datetime.time(random.randint(1, 2), 0, 0)
 
             # If time in range leave the loop and continue with the code
             while not self.time_in_range(start_time, end_time, current_time):
@@ -36,16 +89,57 @@ class Hilfsfunktionen:
                 current_time = datetime.datetime.now().time()
             else:
                 # Don't be to fast, simulate a human
-                time.sleep(random.randint(30, 300))
+                time.sleep(random.randint(min_delay, max_delay))
         else:
             print(self.timestamp() + "Hilfsfunktionen::time_function: Attention, time_function is turned off")
             # Don't be to fast, simulate a human
-            time.sleep(random.randint(30, 300))
+            time.sleep(random.randint(min_delay, max_delay))
 
         return True
 
 
 class Hilfsfunktionen_yt(Hilfsfunktionen):
+
+    driver = None
+
+    # Add proxy ports, host, etc.
+    def watch_video(self, yt_video_id, proxy_info, loops=10, duration_in_sec=None):
+
+        self.driver = self.install_firefox_proxy_new(proxy_info[0], proxy_info[1])
+
+        url_body = 'https://www.youtube.com/watch?v='
+        url_link = url_body + yt_video_id
+        if duration_in_sec is not None:
+            pass
+        else:
+            duration_in_sec = 300
+        while loops != 0:
+
+            self.driver.get(url_link)
+            time.sleep(duration_in_sec+10)
+            self.driver.quit()
+            loops -= 1
+
+    # Get account info for required account
+    def yt_get_account_info(self, account_type, account_nr):
+        data_extracted = None
+
+        if account_type == 'gmail':
+            data = get_data("./acc/youtube/gmail/acc_in_use.ods")
+            data_extracted = {'Email': data['Tabelle1'][account_nr][1],
+                                      'Password': data['Tabelle1'][account_nr][2],
+                                      'Birthday': data['Tabelle1'][account_nr][3],
+                                      'Gender': data['Tabelle1'][account_nr][4],
+                                      'Rec_Mail': data['Tabelle1'][account_nr][5],
+                                      'Rec_Pass': data['Tabelle1'][account_nr][6],
+                                      'Phone_Number': data['Tabelle1'][account_nr][7]}
+
+        if account_type == 'twitter':
+            pass
+        if account_type == 'facebook':
+            pass
+
+        return data_extracted
 
     # Some statistics on Videos, returns a dictionary with statistics
     @staticmethod
