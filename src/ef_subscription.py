@@ -2,10 +2,11 @@ import src.ef_functions as ef_functions
 
 class Subscription:
 
-    def __init__(self):
+    # Hilfsfunktion instance
+    inst_helpfct = ef_functions.Hilfsfunktionen_yt()
 
-        # Hilfsfunktion instance
-        self.inst_helpfct = ef_functions.Hilfsfunktionen_yt()
+    def __init__(self):
+        pass
 
     # This method calls the API's youtube.subscriptions.insert method to add a
     # subscription to the specified channel.
