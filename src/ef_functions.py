@@ -6,9 +6,14 @@ import datetime
 from selenium import webdriver
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from pyexcel_ods import get_data
+import socks
+import httplib2
 
 
 class Hilfsfunktionen:
+
+    def __init__(self):
+        pass
 
     def install_firefox_proxy_new(self, proxy_ip, proxy_port):
 
@@ -48,18 +53,20 @@ class Hilfsfunktionen:
         chrome_options = webdriver.ChromeOptions()
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument('--proxy-server=socks5://' + str(proxy_ip).strip()
-                                    + ':'.strip() + str(proxy_port).strip())
+                                    + ':' + str(proxy_port).strip())
         chrome_options.add_argument(
             '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
             '(KHTML, like Gecko) Chrome/57.0.2987.98 Safari/537.36')
         return webdriver.Chrome(chrome_options=chrome_options)
 
     # Return a timestamp for output
-    def timestamp(self):
+    @staticmethod
+    def timestamp():
         return str('{:%d-%m-%Y %H:%M:%S}: '.format(datetime.datetime.now()))
 
     # Return true if x is in the range [start, end]
-    def time_in_range(self, start_time, end_time, current_time):
+    @staticmethod
+    def time_in_range(start_time, end_time, current_time):
         if start_time <= end_time:
             return start_time <= current_time <= end_time
         else:
@@ -67,7 +74,7 @@ class Hilfsfunktionen:
 
     # Check if its "sleep" time or not, to simulate a human
     # To improve the results, include timezone check for a certain ip?
-    def time_function(self, stretch_factor=1, turned_on=True):
+    def time_function(self, stretch_factor=1, turned_on=False):
 
         min_delay = 30
         max_delay = 300
@@ -75,6 +82,7 @@ class Hilfsfunktionen:
         min_delay = round(min_delay*stretch_factor)
         max_delay = round(max_delay*stretch_factor)
 
+        # Sleeping time, probably not needed, because threads are likely to by dynamic depending on daytime.
         if turned_on:
             current_time = datetime.datetime.now().time()
             # Randomize a bit, so the threads don't 'collapse' all at the same time
@@ -91,7 +99,7 @@ class Hilfsfunktionen:
                 # Don't be to fast, simulate a human
                 time.sleep(random.randint(min_delay, max_delay))
         else:
-            print(self.timestamp() + "Hilfsfunktionen::time_function: Attention, time_function is turned off")
+            print(self.timestamp() + "Hilfsfunktionen::time_function: Attention, time_function is partially turned off")
             # Don't be to fast, simulate a human
             time.sleep(random.randint(min_delay, max_delay))
 
@@ -102,23 +110,70 @@ class Hilfsfunktionen_yt(Hilfsfunktionen):
 
     driver = None
 
+    # This function converts the provided video length by youtube to seconcds.
+    def video_length_in_sec(self, yt_length_string):
+
+        # Remove 'PT' from string
+        step = yt_length_string[2:]
+        minutes = ''
+        seconds = ''
+
+        step_length = len(step)
+
+        if step_length > 3:
+            for index, item in enumerate(step):
+                if item == 'M':
+                    step = step[index + 1:]
+                    for i in step:
+                        if i == 'S':
+                            break
+                        else:
+                            seconds += i
+                    break
+                else:
+                    minutes += item
+        elif step_length == 3:
+            step = step[:1]
+            seconds = int(step)
+            minutes = '0'
+        elif step_length == 2:
+            step = step[0]
+            seconds = int(step)
+            minutes = '0'
+
+        return int(minutes)*60+int(seconds)
+
+    # TODO FIX Watching video, proxy do not work
     # Add proxy ports, host, etc.
-    def watch_video(self, yt_video_id, proxy_info, loops=10, duration_in_sec=None):
+    def watch_video(self, yt_video_id, proxy_info, duration_in_sec=None, loops=10):
 
-        self.driver = self.install_firefox_proxy_new(proxy_info[0], proxy_info[1])
+        socks.setdefaultproxy()
 
-        url_body = 'https://www.youtube.com/watch?v='
+        #self.driver = self.install_firefox_proxy_new(proxy_info[0], proxy_info[1])
+        #self.driver = self.install_chrome_proxy('5.101.217.235', 1080)
+        #self.driver = webdriver.Chrome()
+
+        url_body = 'https://youtube.com/watch?v='
         url_link = url_body + yt_video_id
         if duration_in_sec is not None:
             pass
         else:
             duration_in_sec = 300
         while loops != 0:
-
+            self.driver = webdriver.Chrome()
+            time.sleep(5)
             self.driver.get(url_link)
-            time.sleep(duration_in_sec+10)
+            time.sleep(duration_in_sec+5)
             self.driver.quit()
+            time.sleep(5)
+
             loops -= 1
+
+        socks.setdefaultproxy(socks.PROXY_TYPE_SOCKS5, proxy_info[0], int(proxy_info[1]),
+                              username='EUR233698', password='KS5yfdvh4T')
+        print(self.timestamp() + "Hilfsfunktionen::watch_video: Attention, Socks USERNAME and PASSWORD was "
+                                 "newly set after watching Video.")
+        socks.wrapmodule(httplib2)
 
     # Get account info for required account
     def yt_get_account_info(self, account_type, account_nr):
@@ -149,6 +204,8 @@ class Hilfsfunktionen_yt(Hilfsfunktionen):
         content_details = result['items'][0]['contentDetails']
 
         result = yt_handle.videos().list(part='statistics', id=yt_video_id).execute()
+        # TODO statistics not on every video? dko2-KdyEwY is not having statistics. Check at \
+        # https://developers.google.com/youtube/v3/docs/videos/list
         statistics = result['items'][0]['statistics']
         statistics['duration'] = content_details['duration']
 
