@@ -5,12 +5,13 @@ from apiclient import errors
 
 class Rating:
 
+    # Hilfsfunktion instance
+    inst_helpfct = ef_functions.Hilfsfunktionen_yt()
+
     def __init__(self):
+        pass
 
-        # Hilfsfunktion instance
-        self.inst_helpfct = ef_functions.Hilfsfunktionen_yt()
-
-    def youtube_video_manual(self, yt_handle, yt_video_id, proxy_info, stretch_factor=1, watch_video_settings=1,
+    def youtube_video_manual(self, yt_handle, yt_video_id, proxy_info, stretch_factor, watch_video_settings,
                              yt_rating="like", thread_name=None):
 
         # Since this function is primitive and is always in a loop of other functions,
@@ -34,9 +35,12 @@ class Rating:
             else:
                 thread_name += ': '
 
+            # TODO Rating seems not always to work???
             # Get video length
-            video_length = 300
-            #video_length = int(yt_statistics['duration'])
+            #video_length = 300
+            video_length = yt_statistics['duration']
+
+            video_length = self.inst_helpfct.video_length_in_sec(video_length)
 
             if watch_video_settings == 2:
                 print(self.inst_helpfct.timestamp() + thread_name + "Rating::youtube_video_manual: Youtube Video watch"
@@ -88,7 +92,7 @@ class Rating:
                           " already exist or not possible")
             else:
                 print(self.inst_helpfct.timestamp() + thread_name + "Rating::youtube_video_manual:"
-                            "Attention, Viewcount devided by LikeCount is less than"
+                            " Attention, Viewcount devided by LikeCount is less than"
                                                                     " {0}, its {1} for the video {2}."
                                                                     " Video was not rated".format(rating_ratio,
                                                                                                   ratio, yt_video_id))
@@ -101,7 +105,7 @@ class Rating:
 
         return True
 
-    def youtube_video_auto(self, yt_handle, proxy_info, stretch_factor=1, watch_video_settings=1, thread_name=None):
+    def youtube_video_auto(self, yt_handle, proxy_info, stretch_factor, watch_video_settings, thread_name=None):
 
         # Get a video list from DB
         video_list = self.inst_helpfct.get_video_list_from_sqlite()
