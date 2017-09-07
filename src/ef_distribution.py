@@ -12,23 +12,22 @@ import random
 
 
 class Distribution:
+    # Connector instance
+    inst_conn = ef_connection.Connector()
+
+    # Hilfsfunktion_yt instance
+    inst_helpfct = ef_functions.Hilfsfunktionen_yt()
+
+    # Rating instance
+    inst_rating = ef_rating.Rating()
+
+    # Subscription instance
+    inst_subscr = ef_subscribtion.Subscription()
+
     __daytime_factor = None
 
     def __init__(self):
-
-        # Connector instance
-        self.inst_conn = ef_connection.Connector()
-
-        # Hilfsfunktion_yt instance
-        self.inst_helpfct = ef_functions.Hilfsfunktionen_yt()
-
-        # Rating instance
-        self.inst_rating = ef_rating.Rating()
-
-        # Subscription instance
-        self.inst_subscr = ef_subscribtion.Subscription()
-
-        # Add watching instance when completed
+        pass
 
     def get_accounts_number(self):
 
@@ -71,19 +70,45 @@ class Distribution:
 
         morning_start = datetime.time(6, 0, 0)
         midday_start = datetime.time(12, 0, 0)
-        evening_start = datetime.time(17, 0, 0)
-        night_start = datetime.time(22, 0, 0)
+        evening_start = datetime.time(18, 0, 0)
+        night_start = datetime.time(0, 0, 0)
 
-        if morning_start <= current_time <= midday_start:
+        if morning_start <= current_time < midday_start:
             self.__daytime_factor = 0.4
-        elif midday_start <= current_time <= evening_start:
+            print(self.inst_helpfct.timestamp() + 'Distribution::dynamic_threads_number: '
+                                                  'Daytime Morning was triggered.')
+        elif midday_start <= current_time < evening_start:
             self.__daytime_factor = 0.6
-        elif evening_start <= current_time <= night_start:
-            self.__daytime_factor = 1
+            print(self.inst_helpfct.timestamp() + 'Distribution::dynamic_threads_number: '
+                                                  'Daytime Midday was triggered.')
+
+        elif night_start > current_time > evening_start or evening_start < current_time > night_start:
+
+            if night_start > current_time > evening_start:
+                self.__daytime_factor = 1
+                print(self.inst_helpfct.timestamp() + 'Distribution::dynamic_threads_number: '
+                                                      'Daytime Evening was triggered.')
+
+            elif evening_start < current_time > night_start:
+                self.__daytime_factor = 1
+                print(self.inst_helpfct.timestamp() + 'Distribution::dynamic_threads_number: '
+                                                      'Daytime Evening was triggered.')
+
+        elif (night_start <= current_time < morning_start) or (night_start <= current_time > morning_start):
+            self.__daytime_factor = 0.2
+            print(self.inst_helpfct.timestamp() + 'Distribution::dynamic_threads_number: '
+                                                  'Daytime Night was triggered.')
         else:
+            # To make sure its defined, would work without, but python cant see it.
+            print(self.inst_helpfct.timestamp() + 'Distribution::dynamic_threads_number: '
+                                                  'Attention, undefined daytime was triggered.')
             self.__daytime_factor = 0.2
 
-        return int(threads_number_max*self.__daytime_factor)
+        if int(threads_number_max * self.__daytime_factor) == 0:
+            # Make sure, at least 1 thread is active.
+            return 1
+        else:
+            return int(threads_number_max * self.__daytime_factor)
 
 
 class Distribution_yt(Distribution):
@@ -112,6 +137,8 @@ class Distribution_yt(Distribution):
 
         proxy_info = [proxy_host, proxy_port, proxy_type, proxy_user, proxy_pass]
 
+        #self.inst_helpfct.watch_video('_PmYvOnfcpk', proxy_info)
+
         # Channel_list_by_id and video_list_by_channel have the same order
         # its needed for Rating.youtube_channel function to verify if to rate up or down
         if one_shot_channel_id is None:
@@ -129,8 +156,8 @@ class Distribution_yt(Distribution):
             else:
                 print(self.inst_helpfct.timestamp() + 'Distribution::thread_rating: '
                                                       'Attention, reason argument is not 1 or 0')
-            self.inst_rating.youtube_video_manual(yt_handle, one_shot_video_id, stretch_factor,
-                                                  watch_video_settings, rating, proxy_info)
+            self.inst_rating.youtube_video_manual(yt_handle, one_shot_video_id, proxy_info, stretch_factor,
+                                                  watch_video_settings, rating)
         # If its not the case, than a channel or auto channel from db is wished
         else:
             # print(channel_list_by_id)
@@ -140,7 +167,8 @@ class Distribution_yt(Distribution):
             # If auto_video is enabled, then call additional youtube_video_auto function
             # its rating the videos from db
             if auto_video:
-                self.inst_rating.youtube_video_auto(yt_handle, watch_video_settings, stretch_factor, thread_name)
+                self.inst_rating.youtube_video_auto(yt_handle, proxy_info, stretch_factor,
+                                                    watch_video_settings, thread_name)
 
             # print(video_list_by_channel)
             self.inst_rating.youtube_channel_auto(yt_handle, video_list_by_channel, channel_list_by_id, stretch_factor,
@@ -172,10 +200,12 @@ class Distribution_yt(Distribution):
 
     def run(self, threads_number_max, stretch_factor, threads_dynamic, accounts_number_to_use,
             max_history_sites, auto_video, one_shot_channel_id, one_shot_video_id_or_link, one_shot_reason,
-            one_shot_subscription, proxy_type, watch_video_settings):
+            one_shot_subscription, proxy_type, watch_video_settings, accounts_number_available, random_accounts):
 
         # Get proxy list with ports
         proxy_list = self.get_proxy_list()
+
+        thread = None
 
         # Check and print the mode
         if one_shot_subscription is not None:
@@ -192,9 +222,13 @@ class Distribution_yt(Distribution):
             print(self.inst_helpfct.timestamp() + 'Distribution::run: Additionally auto_video'
                                                   ' (lonely videos from db) was started')
 
-        # First we will fast check if credentials are available
+        # First we will fast check if credentials are available for ALL accounts
+
         broken_account_list = []
-        for account_nr in range(1, accounts_number_to_use + 1):
+
+        yt_accounts_list = range(1, accounts_number_available + 1)
+
+        for account_nr in yt_accounts_list:
             # Get proxy_host and proxy_port
             proxy_host = proxy_list[account_nr - 1][0]
             proxy_port = proxy_list[account_nr - 1][1]
@@ -207,7 +241,7 @@ class Distribution_yt(Distribution):
             elif len(proxy_list[account_nr - 1]) != 4 and len(proxy_list[account_nr - 1]) != 2:
                 raise print(self.inst_helpfct.timestamp() +
                                 'Distribution::run: Attention, Proxy file with wrong format??? Quit application')
-
+            # TODO Fix Proxies not reachable
             try:
                 valid = self.inst_conn.yt_connection(account_nr, proxy_host, proxy_port, proxy_type,
                                                      proxy_user, proxy_pass)
@@ -253,9 +287,33 @@ class Distribution_yt(Distribution):
         print(self.inst_helpfct.timestamp() + 'Distribution::run: current max'
                                               ' possible threads (dynamic): {0}'.format(threads_number_dynamic))
 
+        if random_accounts:
+
+            # Lets randomize the account list and proxy list in the same way,
+            # so not always the first accounts are being used first. 2 Lists are needed so ips are not mixed
+            # with different accounts.
+
+            index_shuffle = list(range(len(yt_accounts_list)))
+            random.shuffle(index_shuffle)
+
+            yt_accounts_list_shuffle = []
+            proxy_list_shuffle = []
+
+            for i in index_shuffle:
+                yt_accounts_list_shuffle.append(yt_accounts_list[i])
+                proxy_list_shuffle.append(proxy_list[i])
+
+            # Now we get 2 randomized lists in the same way, now lets copy them to original lists
+            yt_accounts_list = yt_accounts_list_shuffle
+            proxy_list = proxy_list_shuffle
+            print(self.inst_helpfct.timestamp() + 'Distribution::run: Attention, randomized account_list and'
+                                                  ' proxy_list are being used')
+        else:
+            pass
+
         # Now create a handle for each account number and proxy
         # because of the range increase the account number by 1
-        for account_nr in range(1, accounts_number_to_use+1):
+        for account_nr in yt_accounts_list:
 
             if account_nr not in broken_account_list:
                 # Get proxy_host and proxy_port
@@ -273,15 +331,16 @@ class Distribution_yt(Distribution):
 
                 thread_name = 'Thread_' + str(account_nr)
                 # No one_shot_subscription means rating
-                thread = None
+
+                # thread = None
                 if one_shot_subscription is None:
                     thread = threading.Thread(target=self.thread_rating, name=thread_name,
                                               args=(account_nr, proxy_host, proxy_port, proxy_type,
                                                     auto_video, proxy_user, proxy_pass, stretch_factor,
                                                     max_history_sites, one_shot_channel_id, one_shot_video_id,
                                                     one_shot_reason, watch_video_settings, thread_name))
-
-                thread.start()
+                    thread.start()
+                    print(self.inst_helpfct.timestamp() + 'Distribution::run: ' + thread.getName() + ' was started')
 
                 if one_shot_subscription is not None:
                     # Threats are not needed here, we dont need speed, for 500 subscribirs in one day, we need,
@@ -291,7 +350,6 @@ class Distribution_yt(Distribution):
                     self.thread_subscription(account_nr, proxy_host, proxy_port, proxy_type,
                                              proxy_user, proxy_pass, one_shot_subscription)
 
-                print(self.inst_helpfct.timestamp() + 'Distribution::run: ' + thread.getName() + ' was started')
                 number_of_threads = len(threading.enumerate())
 
                 # For some reason we have to slow down threads starting, or we will get different ssl errors
@@ -305,7 +363,7 @@ class Distribution_yt(Distribution):
                 while number_of_threads - 1 > threads_number_dynamic:
                     sleeping_time = 300
                     print(self.inst_helpfct.timestamp() + 'Distribution::run: Max number of threads is reached.'
-                                                          ' Wait for {0} seconds for some threads to finish before'
+                                                          ' Wait {0} seconds for some threads to finish before'
                                                           ' new assignment. Current'
                                                           ' active threads are {1}'.format(sleeping_time,
                                                                                            threading.enumerate()))
@@ -316,11 +374,12 @@ class Distribution_yt(Distribution):
                                                       'thread for this account skipped'.format(account_nr))
                 pass
 
-        # Cant use thread.join because its not reachable since its in a loop
         # Wait till all threads are finished before continue
-        while len(threading.enumerate()) > 1:
-            sleeping_time = 600
-            print(self.inst_helpfct.timestamp() + 'Main thread is waiting for {1} threads to finish,'
-                  ' next check in {0} seconds'.format(sleeping_time, len(threading.enumerate()) - 1))
-            time.sleep(sleeping_time)
+        print(self.inst_helpfct.timestamp() + 'Distribution::run: Threads join point is reached by Main Thread, '
+                                              'waiting for {0} threads to'
+                                              ' finish'.format(len(threading.enumerate()) - 1))
+        thread.join()
+        print(self.inst_helpfct.timestamp() + 'Distribution::run: Threads join point was passed, threads are all'
+                                              ' finished for this run')
+
         print(self.inst_helpfct.timestamp() + 'Distribution::run: Main thread finished')
