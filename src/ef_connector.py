@@ -11,26 +11,22 @@ import random
 
 import httplib2
 import time
-import subprocess
-import threading
 
 
 class Connector:
-
-    __http_token = None
-    driver = None
-    thread = None
+    # Hilfsfunktion_yt instance
+    inst_helpfct = ef_functions.Hilfsfunktionen_yt()
 
     def __init__(self):
 
-        # Hilfsfunktion_yt instance
-        self.inst_helpfct = ef_functions.Hilfsfunktionen_yt()
+        self.driver = None
 
+        self.__http_token = None
 
     def yt_login_automation(self, account_nr, authorize_url, proxy_host, proxy_port,
                             proxy_type, proxy_user, proxy_pass):
 
-        self.driver = None
+        #self.driver = None
         # Change custom default proxy settings to default settings
         # Attention, prevent any rating during this time, since no proxy is used
         socks.setdefaultproxy()
@@ -44,10 +40,12 @@ class Connector:
         browser = 'Firefox'
 
         if browser == 'Chrome':
-            self.driver = self.inst_helpfct.install_chrome_proxy(proxy_list[account_nr-1][0], proxy_list[account_nr-1][1])
+            self.driver = self.inst_helpfct.install_chrome_proxy(proxy_list[account_nr-1][0],
+                                                                 proxy_list[account_nr-1][1])
 
         if browser == 'Firefox':
-            self.driver = self.inst_helpfct.install_firefox_proxy_new(proxy_list[account_nr-1][0], proxy_list[account_nr-1][1])
+            self.driver = self.inst_helpfct.install_firefox_proxy_new(proxy_list[account_nr-1][0],
+                                                                      proxy_list[account_nr-1][1])
 
         #self.driver.set_script_timeout(20)
         #self.driver.set_page_load_timeout(30)
@@ -153,7 +151,6 @@ class Connector:
                                   username=proxy_user, password=proxy_pass)
             socks.wrapmodule(httplib2)
 
-
         else:
             time.sleep(random.randrange(5, 8))
             print(self.inst_helpfct.timestamp() + 'Connector::yt_automation:'
@@ -165,13 +162,6 @@ class Connector:
                                   username=proxy_user, password=proxy_pass)
 
             socks.wrapmodule(httplib2)
-
-
-        # Different approach for a mouse click
-        #subprocess.call(["xdotool", "mousemove", "1128", "420"])
-        #subprocess.call(["xdotool", "click", "1"])
-
-
 
     def yt_connection(self, account_nr, proxy_host, proxy_port, proxy_type, proxy_user, proxy_pass):
 
@@ -256,8 +246,8 @@ class Connector:
                                                   ' credentials invalid'.format(account_nr))
 
             credentials = ef_tools_mod.run_flow(flow, storage, account_nr, proxy_host,
-                                   proxy_port, proxy_type, proxy_user,
-                                   proxy_pass, flags=None, http=self.__http_token)
+                                                proxy_port, proxy_type, proxy_user,
+                                                proxy_pass, flags=None, http=self.__http_token)
         else:
             print(self.inst_helpfct.timestamp() + 'Connector::yt_connection:'
                                                   ' Account Nr. {0} credentials accepted'.format(account_nr))
